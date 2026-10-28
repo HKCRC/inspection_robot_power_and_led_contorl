@@ -33,7 +33,7 @@
 #include "di.h"
 #include "ctl.h"
 #include "led.h"
-#include "ws2812.h"
+#include "ws2811.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,10 +43,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* WS2812 灯带相关参数/驱动/颜色宏已全部迁移至灯效模块：
- *   - 输出后端(SPI/GPIO/PWM)与时序参数 -> ws2812_port.h / ws2812_port.c
- *   - 灯效(常灭/常亮/闪烁/流水/呼吸)   -> ws2812.h / ws2812.c
- * 更换输出 IO 只需改 ws2812_port.h 的 WS_PORT_USE 宏，main.c 无需改动 */
+/* WS2811 灯带相关参数/驱动/颜色宏已全部迁移至灯效模块：
+ *   - 输出后端(SPI/GPIO/PWM)与时序参数 -> ws2811_port.h / ws2811_port.c
+ *   - 灯效(常灭/常亮/闪烁/流水/呼吸)   -> ws2811.h / ws2811.c
+ * 更换输出 IO 只需改 ws2811_port.h 的 WS_PORT_USE 宏，main.c 无需改动 */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -165,7 +165,7 @@ int main(void)
   di_init();
   ctl_init();
   led_init();
-  ws2812_init();   /* WS2812 灯效引擎 + 输出后端初始化（上电默认 160 灯红色常亮） */
+  ws2811_init();   /* WS2811 灯效引擎 + 输出后端初始化（上电默认 160 灯红色常亮） */
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -189,7 +189,7 @@ int main(void)
 			HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_SET);  /* 点亮断电指示灯 */
 		}
 
-		ws2812_task();   /* WS2812 灯效引擎：常灭/常亮/闪烁/流水/呼吸（配置经 Modbus 寄存器推送） */
+		ws2811_task();   /* WS2811 灯效引擎：常灭/常亮/闪烁/流水/呼吸（配置经 Modbus 寄存器推送） */
 
 		hb_led_task();   /* LED1 心跳：主循环存活指示(卡死则停止短闪) */
 		

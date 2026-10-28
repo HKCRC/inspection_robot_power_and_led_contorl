@@ -54,7 +54,7 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, ws2812_Pin|OUT3_A_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, ws2811_Pin|OUT3_A_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(OUT2_B_GPIO_Port, OUT2_B_Pin, GPIO_PIN_RESET);
@@ -77,8 +77,8 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(IN0_TOUCH_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : ws2812_Pin OUT3_A_Pin */
-  GPIO_InitStruct.Pin = ws2812_Pin|OUT3_A_Pin;
+  /*Configure GPIO pins : ws2811_Pin OUT3_A_Pin */
+  GPIO_InitStruct.Pin = ws2811_Pin|OUT3_A_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

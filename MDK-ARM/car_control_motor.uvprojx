@@ -419,14 +419,14 @@
               <FilePath>../Core/Src/led.c</FilePath>
             </File>
             <File>
-              <FileName>ws2812.c</FileName>
+              <FileName>ws2811.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Core/Src/ws2812.c</FilePath>
+              <FilePath>../Core/Src/ws2811.c</FilePath>
             </File>
             <File>
-              <FileName>ws2812_port.c</FileName>
+              <FileName>ws2811_port.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Core/Src/ws2812_port.c</FilePath>
+              <FilePath>../Core/Src/ws2811_port.c</FilePath>
             </File>
             <File>
               <FileName>main.c</FileName>

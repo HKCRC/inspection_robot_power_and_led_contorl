@@ -59,8 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define l_key_Pin GPIO_PIN_13
 #define l_key_GPIO_Port GPIOC
-#define ws2812_Pin GPIO_PIN_5
-#define ws2812_GPIO_Port GPIOA
+#define ws2811_Pin GPIO_PIN_5
+#define ws2811_GPIO_Port GPIOA
 #define OUT3_A_Pin GPIO_PIN_6
 #define OUT3_A_GPIO_Port GPIOA
 #define OUT2_B_Pin GPIO_PIN_1

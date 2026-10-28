@@ -1,17 +1,17 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    ws2812_port.c
+  * @file    ws2811_port.c
   * @brief   WS2811 输出驱动抽象层实现：SPI / GPIO / PWM 后端，宏选择
   * @note    本文件是灯效引擎与硬件之间的唯一边界：
-  *          - 引擎只调用 ws2812_port_init()/ws2812_port_send()
+  *          - 引擎只调用 ws2811_port_init()/ws2811_port_send()
   *          - 后端内部细节（编码、DMA、中断）全部封装在此，切换后端互不影响
   *          - WS_PORT_PWM_SPI 双后端模式：PWM(PB4) + SPI(PE14) 同一帧同步发两路
   ******************************************************************************
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include "ws2812_port.h"
+#include "ws2811_port.h"
 #include "spi.h"
 #include "tim.h"
 #include <string.h>
@@ -27,44 +27,45 @@
  * 复位码元(RESET)：WS2811 要求 >280us；144 字节 × 8bit / 3.75MHz ≈ 307us，安全锁存
  * ------------------------------------------------------------------------ */
 #if (WS_PORT_USE == WS_PORT_SPI) || (WS_PORT_USE == WS_PORT_PWM_SPI)
-#define WS2812_SPI_CODE0_BITS              4u    /* '0' 码元占用的 SPI 位数 */
-#define WS2812_SPI_CODE1_BITS              6u    /* '1' 码元占用的 SPI 位数 */
-#define WS2812_SPI_MAX_BITS_PER_COLOR_BIT  6u    /* 缓冲按最坏(全 1)分配 */
-#define WS2812_RESET_BYTES                 144u  /* 尾部复位码元字节数 ≈307us */
-#define WS2812_LEAD_BYTES                  1u    /* 帧首哨兵字节 0x00：吸收 SPI 首位预驱动长高电平 */
+#define WS2811_SPI_CODE0_BITS              4u    /* '0' 码元占用的 SPI 位数 */
+#define WS2811_SPI_CODE1_BITS              6u    /* '1' 码元占用的 SPI 位数 */
+#define WS2811_SPI_MAX_BITS_PER_COLOR_BIT  6u    /* 缓冲按最坏(全 1)分配 */
+#define WS2811_RESET_BYTES                 144u  /* 尾部复位码元字节数 ≈307us */
+#define WS2811_LEAD_BYTES                  1u    /* 帧首哨兵字节 0x00：吸收 SPI 首位预驱动长高电平 */
 
 /* 输出极性：数据线经反相器时置 1（码元与复位自动取反） */
-#define WS2812_OUTPUT_INVERT               0u
+#define WS2811_OUTPUT_INVERT               0u
 #endif
 
-/* ---- GPIO 软件模拟后端参数（单线 ~800Kbps，PA5/ws2812_Pin）---------------
+/* ---- GPIO 软件模拟后端参数（单线 ~800Kbps，PA5/ws2811_Pin）---------------
  * 延时基于 SYSCLK=480MHz 的 NOP 循环，[saw]* 为估算循环数，需示波器实测微调
- *   数据 1：T1H≈0.70us  T1L≈0.60us   数据 0：T0H≈0.35us  T0L≈0.80us
- *   复位：  >50us 持续低电平
+ * WS2811 时序（与 PWM/SPI 后端一致）：
+ *   数据 1：T1H≈0.65us  T1L≈0.60us   数据 0：T0H≈0.30us  T0L≈0.95us
+ *   复位：  >280us 持续低电平（WS2811 要求；旧款 WS2812 只需 50us）
  * ------------------------------------------------------------------------ */
 #if (WS_PORT_USE == WS_PORT_GPIO)
-#define WS2812_GPIO_PORT         ws2812_GPIO_Port   /* GPIOA */
-#define WS2812_GPIO_PIN          ws2812_Pin         /* GPIO_PIN_5 */
+#define WS2811_GPIO_PORT         ws2811_GPIO_Port   /* GPIOA */
+#define WS2811_GPIO_PIN          ws2811_Pin         /* GPIO_PIN_5 */
 
-/* 以灯珠端电平为准的置高/置低（极性由 WS2812_OUTPUT_INVERT 自动适配） */
-#define WS2812_OUTPUT_INVERT     0u
+/* 以灯珠端电平为准的置高/置低（极性由 WS2811_OUTPUT_INVERT 自动适配） */
+#define WS2811_OUTPUT_INVERT     0u
 
-#if WS2812_OUTPUT_INVERT
+#if WS2811_OUTPUT_INVERT
   /* MCU 输出低 = 灯珠端高 */
-  #define WS_LED_HIGH()  WRITE_REG(WS2812_GPIO_PORT->BSRR, ((uint32_t)WS2812_GPIO_PIN) << 16u)
-  #define WS_LED_LOW()   WRITE_REG(WS2812_GPIO_PORT->BSRR, WS2812_GPIO_PIN)
+  #define WS_LED_HIGH()  WRITE_REG(WS2811_GPIO_PORT->BSRR, ((uint32_t)WS2811_GPIO_PIN) << 16u)
+  #define WS_LED_LOW()   WRITE_REG(WS2811_GPIO_PORT->BSRR, WS2811_GPIO_PIN)
 #else
   /* MCU 输出高 = 灯珠端高 */
-  #define WS_LED_HIGH()  WRITE_REG(WS2812_GPIO_PORT->BSRR, WS2812_GPIO_PIN)
-  #define WS_LED_LOW()   WRITE_REG(WS2812_GPIO_PORT->BSRR, ((uint32_t)WS2812_GPIO_PIN) << 16u)
+  #define WS_LED_HIGH()  WRITE_REG(WS2811_GPIO_PORT->BSRR, WS2811_GPIO_PIN)
+  #define WS_LED_LOW()   WRITE_REG(WS2811_GPIO_PORT->BSRR, ((uint32_t)WS2811_GPIO_PIN) << 16u)
 #endif
 
 /* 单次延时循环开销约 5~6 周期(~12ns @480MHz)，实测时优先保证 T1H/T0H */
-#define WS_GPIO_T0H_CNT          25u    /* ~0.35us 高 */
-#define WS_GPIO_T0L_CNT          100u   /* ~0.80us 低 */
-#define WS_GPIO_T1H_CNT          1000u  /* ~0.70us 高 */
-#define WS_GPIO_T1L_CNT          25u    /* ~0.60us 低 */
-#define WS_GPIO_RESET_CNT        6000u  /* >50us 持续低电平 */
+#define WS_GPIO_T0H_CNT          25u    /* ~0.30us 高（WS2811 T0H 220~380ns） */
+#define WS_GPIO_T0L_CNT          80u    /* ~0.95us 低（WS2811 T0L 580~1000ns） */
+#define WS_GPIO_T1H_CNT          55u    /* ~0.65us 高（WS2811 T1H 580~1000ns） */
+#define WS_GPIO_T1L_CNT          50u    /* ~0.60us 低（WS2811 T1L 580~1000ns） */
+#define WS_GPIO_RESET_CNT        24000u /* ~288us 持续低电平（WS2811 要求 >280us） */
 #endif
 
 /* ---- TIM3_CH1(PB4) PWM+DMA 后端参数（WS2811 时序）-------------------------
@@ -88,8 +89,8 @@ static void ws_port_spi_wait(void);
 #endif
 #if (WS_PORT_USE == WS_PORT_GPIO)
 static void ws_port_gpio_send(const uint8_t *brg, uint16_t count);
-static void ws2812_gpio_delay(uint32_t cnt);
-static void ws2812_gpio_bit(uint32_t high_t, uint32_t low_t);
+static void ws2811_gpio_delay(uint32_t cnt);
+static void ws2811_gpio_bit(uint32_t high_t, uint32_t low_t);
 #endif
 #if (WS_PORT_USE == WS_PORT_PWM) || (WS_PORT_USE == WS_PORT_PWM_SPI)
 static void ws_port_pwm_init(void);
@@ -102,7 +103,7 @@ static void ws_port_pwm_wait(void);
 /**
   * @brief  初始化所选输出后端（引脚/定时器/DMA），空闲输出复位电平
   */
-void ws2812_port_init(void)
+void ws2811_port_init(void)
 {
   /* DWT 周期计数器：延时基准（各后端通用，上电使能一次） */
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
@@ -118,9 +119,9 @@ void ws2812_port_init(void)
 /**
   * @brief  发送一帧 BRG 颜色数据到全部启用后端（阻塞至整帧 + 复位码元发完）
   */
-void ws2812_port_send(const uint8_t *brg, uint16_t count)
+void ws2811_port_send(const uint8_t *brg, uint16_t count)
 {
-  if (brg == 0 || count == 0u || count > WS2812_LED_MAX)
+  if (brg == 0 || count == 0u || count > WS2811_LED_MAX)
   {
     return;
   }
@@ -141,7 +142,7 @@ void ws2812_port_send(const uint8_t *brg, uint16_t count)
 /**
   * @brief  微秒级忙等延时（DWT 周期计数，不占用定时器外设）
   */
-void ws2812_port_delay_us(uint32_t us)
+void ws2811_port_delay_us(uint32_t us)
 {
   uint32_t start = DWT->CYCCNT;
   uint32_t ticks = us * (SystemCoreClock / 1000000u);
@@ -161,19 +162,19 @@ extern SPI_HandleTypeDef hspi4;   /* CubeMX spi.c，SPI 后端各函数共用 */
   * @param  val     待编码的 1 字节颜色数据（MSB 先发）
   * @note   '1' 位 -> 6 个 SPI 位(111000)，'0' 位 -> 4 个 SPI 位(1000)
   */
-static void ws2812_encode_byte(uint8_t *buf, uint32_t *bitpos, uint8_t val)
+static void ws2811_encode_byte(uint8_t *buf, uint32_t *bitpos, uint8_t val)
 {
   for (int8_t i = 7; i >= 0; i--)          /* 颜色数据 MSB 先发 */
   {
     uint8_t code;
     uint8_t nbits;
-#if WS2812_OUTPUT_INVERT
+#if WS2811_OUTPUT_INVERT
     /* 硬件反相：低 3 位恒为 1，高位补 0（'1'=000111，'0'=0111） */
     code  = 0x07u;
-    nbits = (val & (uint8_t)(1u << i)) ? WS2812_SPI_CODE1_BITS : WS2812_SPI_CODE0_BITS;
+    nbits = (val & (uint8_t)(1u << i)) ? WS2811_SPI_CODE1_BITS : WS2811_SPI_CODE0_BITS;
 #else
     code  = (val & (uint8_t)(1u << i)) ? 0x38u : 0x08u;  /* '1'=111000  '0'=1000 */
-    nbits = (val & (uint8_t)(1u << i)) ? WS2812_SPI_CODE1_BITS : WS2812_SPI_CODE0_BITS;
+    nbits = (val & (uint8_t)(1u << i)) ? WS2811_SPI_CODE1_BITS : WS2811_SPI_CODE0_BITS;
 #endif
     for (int8_t b = (int8_t)nbits - 1; b >= 0; b--)        /* 码元 SPI 位，MSB 先发 */
     {
@@ -193,8 +194,8 @@ static void ws2812_encode_byte(uint8_t *buf, uint32_t *bitpos, uint8_t val)
   */
 static void ws_port_spi_start(const uint8_t *brg, uint16_t count)
 {
-  static uint8_t buf[WS2812_LEAD_BYTES + WS2812_LED_MAX * 3u * WS2812_SPI_MAX_BITS_PER_COLOR_BIT + WS2812_RESET_BYTES];
-  uint32_t bitpos = WS2812_LEAD_BYTES * 8u;
+  static uint8_t buf[WS2811_LEAD_BYTES + WS2811_LED_MAX * 3u * WS2811_SPI_MAX_BITS_PER_COLOR_BIT + WS2811_RESET_BYTES];
+  uint32_t bitpos = WS2811_LEAD_BYTES * 8u;
   uint16_t led;
 
   /* 缓冲清零：未写入的位保持低电平（即 RESET / 熄灭） */
@@ -202,23 +203,23 @@ static void ws_port_spi_start(const uint8_t *brg, uint16_t count)
 
   for (led = 0u; led < count; led++)
   {
-    ws2812_encode_byte(buf, &bitpos, brg[led * 3u + 0u]);   /* B */
-    ws2812_encode_byte(buf, &bitpos, brg[led * 3u + 1u]);   /* R */
-    ws2812_encode_byte(buf, &bitpos, brg[led * 3u + 2u]);   /* G */
+    ws2811_encode_byte(buf, &bitpos, brg[led * 3u + 0u]);   /* B */
+    ws2811_encode_byte(buf, &bitpos, brg[led * 3u + 1u]);   /* R */
+    ws2811_encode_byte(buf, &bitpos, brg[led * 3u + 2u]);   /* G */
   }
 
   /* 尾部复位码元：正向时保持 0x00；反向输出时填 0xFF，使灯珠端持续低 >280us 锁存 */
-#if WS2812_OUTPUT_INVERT
+#if WS2811_OUTPUT_INVERT
   while (bitpos & 7u)   /* 补齐本字节尾部位 */
   {
     buf[bitpos >> 3] |= (uint8_t)(1u << (7u - (bitpos & 7u)));
     bitpos++;
   }
-  memset(buf + (bitpos >> 3), 0xFFu, WS2812_RESET_BYTES);
+  memset(buf + (bitpos >> 3), 0xFFu, WS2811_RESET_BYTES);
 #endif
 
   /* 实际帧长 = 数据字节(向上取整) + 复位字节 */
-  uint16_t frame_bytes = (uint16_t)((bitpos + 7u) / 8u) + WS2812_RESET_BYTES;
+  uint16_t frame_bytes = (uint16_t)((bitpos + 7u) / 8u) + WS2811_RESET_BYTES;
 
   /* 等上一帧 SPI 发完（正常流程上一帧已在 wait 中完成） */
   {
@@ -263,7 +264,7 @@ static void ws_port_spi_wait(void)
   * @brief  软件延时（volatile 计数值，避免被编译器优化掉，用于相位粗调）
   * @param  cnt  循环次数，每次约 5~6 周期(~12ns @480MHz)
   */
-static void ws2812_gpio_delay(uint32_t cnt)
+static void ws2811_gpio_delay(uint32_t cnt)
 {
   volatile uint32_t i;
   for (i = 0u; i < cnt; i++)
@@ -277,18 +278,18 @@ static void ws2812_gpio_delay(uint32_t cnt)
   * @param  high_t  高电平延时循环数
   * @param  low_t   低电平延时循环数
   */
-static void ws2812_gpio_bit(uint32_t high_t, uint32_t low_t)
+static void ws2811_gpio_bit(uint32_t high_t, uint32_t low_t)
 {
   /* 灯珠端先高后低（极性由 WS_LED_HIGH/LOW 自动适配） */
   WS_LED_HIGH();
-  ws2812_gpio_delay(high_t);
+  ws2811_gpio_delay(high_t);
   WS_LED_LOW();
-  ws2812_gpio_delay(low_t);
+  ws2811_gpio_delay(low_t);
 }
 
 /**
   * @brief  GPIO 后端：软件模拟 800Kbps 单线时序发送整帧（PA5）
-  * @note   数据顺序 BRG（MSB 先发），末尾自动补 >50us 复位码元锁存
+  * @note   数据顺序 BRG（MSB 先发），末尾自动补 >280us 复位码元锁存
   */
 static void ws_port_gpio_send(const uint8_t *brg, uint16_t count)
 {
@@ -308,19 +309,19 @@ static void ws_port_gpio_send(const uint8_t *brg, uint16_t count)
       {
         if (byte & (uint8_t)(1u << bit))
         {
-          ws2812_gpio_bit(WS_GPIO_T1H_CNT, WS_GPIO_T1L_CNT);
+          ws2811_gpio_bit(WS_GPIO_T1H_CNT, WS_GPIO_T1L_CNT);
         }
         else
         {
-          ws2812_gpio_bit(WS_GPIO_T0H_CNT, WS_GPIO_T0L_CNT);
+          ws2811_gpio_bit(WS_GPIO_T0H_CNT, WS_GPIO_T0L_CNT);
         }
       }
     }
   }
 
-  /* 复位码元：灯珠端持续低电平 >50us，触发热锁存（极性自动适配） */
+  /* 复位码元：灯珠端持续低电平 >280us，触发热锁存（极性自动适配） */
   WS_LED_LOW();
-  ws2812_gpio_delay(WS_GPIO_RESET_CNT);
+  ws2811_gpio_delay(WS_GPIO_RESET_CNT);
 }
 
 #endif
@@ -371,7 +372,7 @@ static void ws_port_pwm_init(void)
 static void ws_port_pwm_start(const uint8_t *brg, uint16_t count)
 {
   /* count 灯 x 24 位 + 复位码元（uint16_t CCR1 队列，DMA1 可访问） */
-  static uint16_t ws_pwm_buf[WS2812_LED_MAX * 24u + WS_PWM_RESET_SLOTS];
+  static uint16_t ws_pwm_buf[WS2811_LED_MAX * 24u + WS_PWM_RESET_SLOTS];
   const uint16_t  total = (uint16_t)(count * 24u + WS_PWM_RESET_SLOTS);
   uint16_t n = 0;
   uint16_t led;

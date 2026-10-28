@@ -22,7 +22,7 @@
 #include <string.h>
 #include "di.h"
 #include "ctl.h"
-#include "ws2812.h"
+#include "ws2811.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PV */
@@ -53,8 +53,8 @@ extern UART_HandleTypeDef huart4;
 #define MB_FC_READ_HOLDING         0x03u   /* 读保持寄存器：五路输入 */
 #define MB_FC_READ_INPUT_REG       0x04u   /* 读输入寄存器：五路输入(只读) */
 #define MB_FC_WRITE_SINGLE_COIL    0x05u
-#define MB_FC_WRITE_SINGLE_REG     0x06u   /* 写单寄存器：WS2812 配置 */
-#define MB_FC_WRITE_MULTI_REG      0x10u   /* 写多寄存器：批量写 WS2812 配置 */
+#define MB_FC_WRITE_SINGLE_REG     0x06u   /* 写单寄存器：WS2811 配置 */
+#define MB_FC_WRITE_MULTI_REG      0x10u   /* 写多寄存器：批量写 WS2811 配置 */
 
 #define MB_EXC_ILLEGAL_FUNCTION    0x01u
 #define MB_EXC_ILLEGAL_ADDRESS     0x02u
@@ -65,14 +65,14 @@ extern UART_HandleTypeDef huart4;
  * 0x0005=打包位图 bit0=IN1 bit1=IN2 bit2=IN3 bit3=TOUCH bit4=START
  * 寄存器值：1=触发(输入低电平)  0=未触发(数据源为 di.c 防抖后的状态)
  * ------------------------------------------------------------------------ */
-/* ---- WS2812 保持寄存器(FC03/04 读，FC06/16 写) ----------------------------
+/* ---- WS2811 保持寄存器(FC03/04 读，FC06/16 写) ----------------------------
  * 0x0006=灯数(0~160)     0x0007=亮度%(0~100)  0x0008/9/A=R/G/B(0~255)
  * 0x000B=灯效模式        0=常灭 1=常亮 2=闪烁1Hz 3=流水灯 4=呼吸灯
  * 0x000C=速度参数        流水=步进间隔ms(10~1000) 呼吸=全周期ms(500~10000)
- * 上电默认 160 灯/绿色/亮度100%/常亮（与 ws2812.c 引擎默认值一致）
- * 写入成功后经 ws2812_set_cfg() 推送给灯效引擎即时生效
+ * 上电默认 160 灯/绿色/亮度100%/常亮（与 ws2811.c 引擎默认值一致）
+ * 写入成功后经 ws2811_set_cfg() 推送给灯效引擎即时生效
  * ------------------------------------------------------------------------ */
-#define MB_REG_COUNT      13u   /* 0x0000~0x0005 输入  0x0006~0x000C WS2812 配置 */
+#define MB_REG_COUNT      13u   /* 0x0000~0x0005 输入  0x0006~0x000C WS2811 配置 */
 #define MB_WS_REG_BASE     6u
 #define MB_WS_REG_COUNT    7u
 
@@ -86,7 +86,7 @@ extern UART_HandleTypeDef huart4;
 
  uint8_t  s_rx_buf[MB_RX_BUF_SIZE];
  uint8_t  s_tx_buf[MB_TX_BUF_SIZE];
- /* WS2812 寄存器镜像：[0]=灯数 [1]=亮度 [2]=R [3]=G [4]=B [5]=模式 [6]=速度
+ /* WS2811 寄存器镜像：[0]=灯数 [1]=亮度 [2]=R [3]=G [4]=B [5]=模式 [6]=速度
   * 默认 160 灯/100%/绿/常亮/流水默认速度 */
  volatile uint16_t s_ws_regs[MB_WS_REG_COUNT] = {160u, 100u, 0x00u, 0xFFu, 0x00u, WS_MODE_SOLID, WS_SPEED_FLOW_DEF};
 /* ---- 接收缓冲与诊断变量 --------------------------------------------------
@@ -228,7 +228,7 @@ static uint16_t mb_build_read_regs(uint16_t start, uint16_t count)
     {
       val = di_get_packed();
     }
-    else if (addr >= MB_WS_REG_BASE)   /* 0x0006~0x000A：WS2812 配置 */
+    else if (addr >= MB_WS_REG_BASE)   /* 0x0006~0x000A：WS2811 配置 */
     {
       val = s_ws_regs[addr - MB_WS_REG_BASE];
     }
@@ -335,15 +335,15 @@ static uint16_t mb_build_exception(uint8_t func, uint8_t excode)
 }
 
 /**
-  * @brief  校验 WS2812 配置寄存器写入值是否合法
+  * @brief  校验 WS2811 配置寄存器写入值是否合法
   * @param  ofs  寄存器偏移 0=灯数 1=亮度 2/3/4=R/G/B 5=模式 6=速度
   * @retval 1=合法 0=超范围(触发 0x03 异常)
   */
 static uint8_t mb_ws_reg_valid(uint8_t ofs, uint16_t val)
 {
-  if (ofs == 0u)                       /* 灯数上限 = 灯带容量(ws2812_port.h) */
+  if (ofs == 0u)                       /* 灯数上限 = 灯带容量(ws2811_port.h) */
   {
-    return (val <= WS2812_LED_MAX) ? 1u : 0u;
+    return (val <= WS2811_LED_MAX) ? 1u : 0u;
   }
   if (ofs == 1u)                       /* 亮度上限 100% */
   {
@@ -361,7 +361,7 @@ static uint8_t mb_ws_reg_valid(uint8_t ofs, uint16_t val)
 }
 
 /**
-  * @brief  将 WS2812 寄存器镜像(0x0006~0x000C)推送给灯效引擎，写入后调用
+  * @brief  将 WS2811 寄存器镜像(0x0006~0x000C)推送给灯效引擎，写入后调用
   */
 static void mb_ws_push_cfg(void)
 {
@@ -374,7 +374,7 @@ static void mb_ws_push_cfg(void)
                  |  (uint32_t)s_ws_regs[4];
   cfg.mode       = (uint8_t)s_ws_regs[5];
   cfg.speed      = s_ws_regs[6];
-  ws2812_set_cfg(&cfg);
+  ws2811_set_cfg(&cfg);
 }
 
 /**
@@ -552,7 +552,7 @@ uint8_t modbus_task(void)
       }
       break;
 
-    case MB_FC_WRITE_SINGLE_REG: /* 06 写单寄存器：WS2812 配置 */
+    case MB_FC_WRITE_SINGLE_REG: /* 06 写单寄存器：WS2811 配置 */
       if (s_rx_len < 8) return 0;
       {
         uint16_t addr = (uint16_t)((s_rx_buf[2] << 8) | s_rx_buf[3]);

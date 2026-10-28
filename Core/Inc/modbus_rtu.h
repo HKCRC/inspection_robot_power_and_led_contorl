@@ -26,8 +26,8 @@ extern "C" {
 /* USER CODE BEGIN Exported functions */
 void    modbus_init(void);   /* 初始化并启动接收 */
 uint8_t modbus_task(void);   /* 主循环轮询：返回 1=收到上位机关闭(断电)继电器指令，0=否则 */
-/* WS2812 配置通过保持寄存器 0x0006~0x000C 写入(FC06/FC16)，写入后内部
- * 直接推送给灯效引擎(ws2812.h)即时生效，读取走 FC03/FC04 返回寄存器镜像 */
+/* WS2811 配置通过保持寄存器 0x0006~0x000C 写入(FC06/FC16)，写入后内部
+ * 直接推送给灯效引擎(ws2811.h)即时生效，读取走 FC03/FC04 返回寄存器镜像 */
 /* USER CODE END Exported functions */
 
 #ifdef __cplusplus

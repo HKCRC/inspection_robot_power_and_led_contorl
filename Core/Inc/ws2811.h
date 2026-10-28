@@ -1,15 +1,15 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    ws2812.h
-  * @brief   WS2812 灯效引擎：常灭/常亮/闪烁/流水/呼吸，配置由 Modbus 寄存器推送
-  * @note    分层：modbus_rtu.c --(ws2812_set_cfg)--> ws2812.c --(ws2812_port_send)
-  *          --> ws2812_port.c(驱动抽象)。引擎不接触任何具体外设。
+  * @file    ws2811.h
+  * @brief   WS2811 灯效引擎：常灭/常亮/闪烁/流水/呼吸，配置由 Modbus 寄存器推送
+  * @note    分层：modbus_rtu.c --(ws2811_set_cfg)--> ws2811.c --(ws2811_port_send)
+  *          --> ws2811_port.c(驱动抽象)。引擎不接触任何具体外设。
   ******************************************************************************
   */
 /* USER CODE END Header */
-#ifndef __WS2812_H
-#define __WS2812_H
+#ifndef __WS2811_H
+#define __WS2811_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,7 +17,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "ws2812_port.h"
+#include "ws2811_port.h"
 
 /* USER CODE BEGIN Exported defines */
 /* 灯效模式（对应 Modbus 寄存器 0x000B 的合法取值） */
@@ -40,23 +40,23 @@ extern "C" {
   */
 typedef struct
 {
-  uint16_t count;       /* 灯珠数量 0~WS2812_LED_MAX */
+  uint16_t count;       /* 灯珠数量 0~WS2811_LED_MAX */
   uint8_t  mode;        /* WS_MODE_x */
   uint8_t  brightness;  /* 亮度 0~100 (%) */
-  uint32_t color;       /* 颜色 RGB888，如 WS2812_COLOR_RED */
+  uint32_t color;       /* 颜色 RGB888，如 WS2811_COLOR_RED */
   uint16_t speed;       /* 速度：流水=步进ms(10~1000) 呼吸=周期ms(500~10000)，其它模式忽略 */
 } ws_cfg_t;
 /* USER CODE END ET */
 
 /* Exported functions prototypes ---------------------------------------------*/
 /* USER CODE BEGIN EFP */
-void ws2812_init(void);                        /* 初始化引擎 + 输出后端，按默认配置渲染首帧 */
-void ws2812_task(void);                        /* 主循环周期调用：驱动动效（内部非阻塞） */
-void ws2812_set_cfg(const ws_cfg_t *cfg);      /* Modbus 写寄存器后推送新配置，立即生效 */
+void ws2811_init(void);                        /* 初始化引擎 + 输出后端，按默认配置渲染首帧 */
+void ws2811_task(void);                        /* 主循环周期调用：驱动动效（内部非阻塞） */
+void ws2811_set_cfg(const ws_cfg_t *cfg);      /* Modbus 写寄存器后推送新配置，立即生效 */
 /* USER CODE END EFP */
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __WS2812_H */
+#endif /* __WS2811_H */

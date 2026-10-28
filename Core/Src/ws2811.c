@@ -1,8 +1,8 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    ws2812.c
-  * @brief   WS2812 灯效引擎实现
+  * @file    ws2811.c
+  * @brief   WS2811 灯效引擎实现
   * @note    非阻塞设计：基于 HAL_GetTick() 时间片驱动动效；仅发送帧时阻塞
   *          （约 6ms/帧 @160灯）。静态模式（常灭/常亮）只在配置变化时渲染一次，
   *          动态模式（闪烁/流水/呼吸）按帧节拍重绘，不空耗 CPU 与总线。
@@ -10,7 +10,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include "ws2812.h"
+#include "ws2811.h"
 #include <string.h>
 
 /* USER CODE BEGIN Private defines */
@@ -32,11 +32,11 @@ static uint16_t s_prev_count;   /* 上次渲染的灯珠数：灯数调小时清
     .count      = 160u,
     .mode       = WS_MODE_SOLID,
     .brightness = 100u,
-    .color      = WS2812_COLOR_GREEN,
+    .color      = WS2811_COLOR_GREEN,
     .speed      = WS_SPEED_FLOW_DEF,
 };
 
-static uint8_t  s_frame[WS2812_LED_MAX * 3u];  /* BRG 帧缓冲，整帧下发给端口层 */
+static uint8_t  s_frame[WS2811_LED_MAX * 3u];  /* BRG 帧缓冲，整帧下发给端口层 */
 static uint8_t  s_need_render = 1u;            /* 配置变化后需立即渲染 */
 static uint8_t  s_blink_on;                    /* 闪烁当前相位：1=亮 0=灭 */
 static uint16_t s_flow_pos;                    /* 流水灯头部位置 */
@@ -82,16 +82,16 @@ static uint16_t ws_frame_len(void)
 {
   uint16_t len = (s_cfg.count > s_prev_count) ? s_cfg.count : s_prev_count;
 
-  if (len > WS2812_LED_MAX)
+  if (len > WS2811_LED_MAX)
   {
-    len = WS2812_LED_MAX;
+    len = WS2811_LED_MAX;
   }
   return len;
 }
 
 /**
   * @brief  下发当前帧(只发 ws_frame_len() 颗)并记录本次灯数
-  * @note   原实现固定下发 WS2812_LED_MAX(1000) 颗，PWM 后端一帧约 30ms，
+  * @note   原实现固定下发 WS2811_LED_MAX(1000) 颗，PWM 后端一帧约 30ms，
   *         会把主循环拖慢并严重影响 Modbus 收发；这里按实际需要长度下发。
   */
 static void ws_flush(void)
@@ -102,7 +102,7 @@ static void ws_flush(void)
   {
     return;                      /* 灯数为 0：无灯珠需要下发 */
   }
-  ws2812_port_send(s_frame, len);
+  ws2811_port_send(s_frame, len);
   s_prev_count = s_cfg.count;
 }
 
@@ -123,7 +123,7 @@ static void render_uniform(uint8_t pct)
 
     for (uint16_t i = s_cfg.count; i < len; i++)
     {
-      put_pixel(i, WS2812_COLOR_OFF);
+      put_pixel(i, WS2811_COLOR_OFF);
     }
   }
   ws_flush();   /* 只下发实际需要的长度，不再固定 1000 颗(30ms 阻塞) */
@@ -152,9 +152,9 @@ static void render_flow(void)
 /**
   * @brief  初始化：启动输出后端，按默认配置渲染首帧
   */
-void ws2812_init(void)
+void ws2811_init(void)
 {
-  ws2812_port_init();
+  ws2811_port_init();
   s_need_render = 1u;
   s_blink_on    = 0u;
   s_flow_pos    = 0u;
@@ -166,14 +166,14 @@ void ws2812_init(void)
 /**
   * @brief  Modbus 写寄存器后推送新配置（模组合法性由 Modbus 层校验，此处兜底钳位）
   */
-void ws2812_set_cfg(const ws_cfg_t *cfg)
+void ws2811_set_cfg(const ws_cfg_t *cfg)
 {
   if (cfg == 0)
   {
     return;
   }
 
-  s_cfg.count      = (cfg->count > WS2812_LED_MAX) ? WS2812_LED_MAX : cfg->count;
+  s_cfg.count      = (cfg->count > WS2811_LED_MAX) ? WS2811_LED_MAX : cfg->count;
   s_cfg.mode       = (cfg->mode  > WS_MODE_MAX)    ? WS_MODE_OFF  : cfg->mode;
   s_cfg.brightness = (cfg->brightness > 100u)      ? 100u         : cfg->brightness;
   s_cfg.color      = cfg->color;
@@ -195,7 +195,7 @@ void ws2812_set_cfg(const ws_cfg_t *cfg)
     s_cfg.speed = cfg->speed;   /* 其它模式不使用，保留寄存器值即可 */
   }
 
-  s_need_render = 1u;   /* 下次 ws2812_task() 立即按新配置渲染 */
+  s_need_render = 1u;   /* 下次 ws2811_task() 立即按新配置渲染 */
 }
 
 /**
@@ -203,7 +203,7 @@ void ws2812_set_cfg(const ws_cfg_t *cfg)
   * @note   常灭/常亮仅在配置变化时渲染一次；闪烁在相位翻转时渲染；
   *         流水按 speed 步进；呼吸按 WS_FRAME_MS 节拍重算亮度。
   */
-void ws2812_task(void)
+void ws2811_task(void)
 {
   uint32_t now = HAL_GetTick();
 
