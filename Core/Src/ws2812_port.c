@@ -83,7 +83,8 @@
 
 /* USER CODE BEGIN Private_Function_Prototypes */
 #if (WS_PORT_USE == WS_PORT_SPI) || (WS_PORT_USE == WS_PORT_PWM_SPI)
-static void ws_port_spi_send(const uint8_t *brg, uint16_t count);
+static void ws_port_spi_start(const uint8_t *brg, uint16_t count);
+static void ws_port_spi_wait(void);
 #endif
 #if (WS_PORT_USE == WS_PORT_GPIO)
 static void ws_port_gpio_send(const uint8_t *brg, uint16_t count);
@@ -92,7 +93,8 @@ static void ws2812_gpio_bit(uint32_t high_t, uint32_t low_t);
 #endif
 #if (WS_PORT_USE == WS_PORT_PWM) || (WS_PORT_USE == WS_PORT_PWM_SPI)
 static void ws_port_pwm_init(void);
-static void ws_port_pwm_send(const uint8_t *brg, uint16_t count);
+static void ws_port_pwm_start(const uint8_t *brg, uint16_t count);
+static void ws_port_pwm_wait(void);
 #endif
 /* USER CODE END Private_Function_Prototypes */
 
@@ -123,10 +125,16 @@ void ws2812_port_send(const uint8_t *brg, uint16_t count)
     return;
   }
 #if (WS_PORT_USE == WS_PORT_PWM) || (WS_PORT_USE == WS_PORT_PWM_SPI)
-  ws_port_pwm_send(brg, count);      /* 上层 PB4 */
+  ws_port_pwm_start(brg, count);      /* 上层 PB4：启动 DMA */
 #endif
 #if (WS_PORT_USE == WS_PORT_SPI) || (WS_PORT_USE == WS_PORT_PWM_SPI)
-  ws_port_spi_send(brg, count);      /* 下层 PE14 */
+  ws_port_spi_start(brg, count);      /* 下层 PE14：启动 DMA（与 PWM 同时发送） */
+#endif
+#if (WS_PORT_USE == WS_PORT_PWM) || (WS_PORT_USE == WS_PORT_PWM_SPI)
+  ws_port_pwm_wait();                 /* 等待 PWM 发完 */
+#endif
+#if (WS_PORT_USE == WS_PORT_SPI) || (WS_PORT_USE == WS_PORT_PWM_SPI)
+  ws_port_spi_wait();                 /* 等待 SPI 发完 */
 #endif
 }
 
@@ -145,6 +153,7 @@ void ws2812_port_delay_us(uint32_t us)
 
 /* USER CODE BEGIN Private_Functions */
 #if (WS_PORT_USE == WS_PORT_SPI) || (WS_PORT_USE == WS_PORT_PWM_SPI)
+extern SPI_HandleTypeDef hspi4;   /* CubeMX spi.c，SPI 后端各函数共用 */
 /**
   * @brief  将一个颜色字节按 WS2811 变长码元编码，写入 SPI 发送缓冲
   * @param  buf     发送缓冲（需预先清零）
@@ -182,10 +191,8 @@ static void ws2812_encode_byte(uint8_t *buf, uint32_t *bitpos, uint8_t val)
   * @note   1 字节哨兵(0x00) + count 灯 × 3 字节变长码元 + 144 字节复位码元；
   *         阻塞至 DMA 与 SPI 移位寄存器全部发完，保证复位码元完整输出。
   */
-static void ws_port_spi_send(const uint8_t *brg, uint16_t count)
+static void ws_port_spi_start(const uint8_t *brg, uint16_t count)
 {
-  extern SPI_HandleTypeDef hspi4;   /* CubeMX spi.c */
-
   static uint8_t buf[WS2812_LEAD_BYTES + WS2812_LED_MAX * 3u * WS2812_SPI_MAX_BITS_PER_COLOR_BIT + WS2812_RESET_BYTES];
   uint32_t bitpos = WS2812_LEAD_BYTES * 8u;
   uint16_t led;
@@ -213,7 +220,7 @@ static void ws_port_spi_send(const uint8_t *brg, uint16_t count)
   /* 实际帧长 = 数据字节(向上取整) + 复位字节 */
   uint16_t frame_bytes = (uint16_t)((bitpos + 7u) / 8u) + WS2812_RESET_BYTES;
 
-  /* DMA 发送：字节间无 CPU 软件间隙，时序更连续 */
+  /* 等上一帧 SPI 发完（正常流程上一帧已在 wait 中完成） */
   {
     uint32_t tmo = HAL_GetTick();
     while (HAL_SPI_GetState(&hspi4) != HAL_SPI_STATE_READY)
@@ -229,7 +236,13 @@ static void ws_port_spi_send(const uint8_t *brg, uint16_t count)
   {
     return;   /* 启动失败：放弃本次发送，避免 Error_Handler 死循环 */
   }
-  /* 等待整帧(含复位码元)发完再返回 */
+}
+
+/**
+  * @brief  等待 SPI 整帧(含复位码元)发完
+  */
+static void ws_port_spi_wait(void)
+{
   {
     uint32_t tmo = HAL_GetTick();
     while (HAL_SPI_GetState(&hspi4) != HAL_SPI_STATE_READY)
@@ -332,7 +345,7 @@ static void ws_port_pwm_init(void)
   hdma_tim3_ws.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;  /* CCR1 有效位宽 16bit */
   hdma_tim3_ws.Init.MemDataAlignment    = DMA_MDATAALIGN_HALFWORD;
   hdma_tim3_ws.Init.Mode                = DMA_NORMAL;
-  hdma_tim3_ws.Init.Priority            = DMA_PRIORITY_HIGH;
+  hdma_tim3_ws.Init.Priority            = DMA_PRIORITY_VERY_HIGH;  /* PWM 时序严格，优先级高于 SPI */
   hdma_tim3_ws.Init.FIFOMode            = DMA_FIFOMODE_DISABLE;
   if (HAL_DMA_Init(&hdma_tim3_ws) != HAL_OK)
   {
@@ -355,7 +368,7 @@ static void ws_port_pwm_init(void)
   * @note   阻塞约 count*30us + 300us 复位（200 颗约 6.3ms），期间 DMA 硬件
   *         连续刷新 CCR1 保证时序；帧尾 CCR=0 持续低电平触发热锁存。
   */
-static void ws_port_pwm_send(const uint8_t *brg, uint16_t count)
+static void ws_port_pwm_start(const uint8_t *brg, uint16_t count)
 {
   /* count 灯 x 24 位 + 复位码元（uint16_t CCR1 队列，DMA1 可访问） */
   static uint16_t ws_pwm_buf[WS2812_LED_MAX * 24u + WS_PWM_RESET_SLOTS];
@@ -400,7 +413,13 @@ static void ws_port_pwm_send(const uint8_t *brg, uint16_t count)
     ws_pwm_busy = 0;   /* 启动失败：清标志并放弃本次发送，避免 Error_Handler 死循环 */
     return;
   }
+}
 
+/**
+  * @brief  等待 PWM 整帧(含复位)发完
+  */
+static void ws_port_pwm_wait(void)
+{
   {
     uint32_t tmo = HAL_GetTick();
     while (ws_pwm_busy)   /* 阻塞至整帧(含复位)发完再返回 */
