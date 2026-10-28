@@ -17,6 +17,8 @@
 #include <string.h>
 
 /* USER CODE BEGIN Private defines */
+/* 单帧发送超时：DMA 出错时防止忙等死循环。1000 颗灯最坏约 40ms，留足余量 */
+#define WS_TX_TIMEOUT_MS                100u
 /* ---- SPI4 后端参数（WS2811 时序）-------------------------------------------
  * SPI4 内核时钟 = D2PCLK1 = 120MHz，BaudRatePrescaler = 32 -> 3.75MHz（1 SPI 位 ≈ 267ns）
  * 每个颜色位用变长 SPI 码元编码（MSB 先发），满足 WS2811 时序：
@@ -212,16 +214,32 @@ static void ws_port_spi_send(const uint8_t *brg, uint16_t count)
   uint16_t frame_bytes = (uint16_t)((bitpos + 7u) / 8u) + WS2812_RESET_BYTES;
 
   /* DMA 发送：字节间无 CPU 软件间隙，时序更连续 */
-  while (HAL_SPI_GetState(&hspi4) != HAL_SPI_STATE_READY)
   {
+    uint32_t tmo = HAL_GetTick();
+    while (HAL_SPI_GetState(&hspi4) != HAL_SPI_STATE_READY)
+    {
+      if ((HAL_GetTick() - tmo) > WS_TX_TIMEOUT_MS)
+      {
+        HAL_SPI_Abort(&hspi4);   /* 超时：中止残留传输，恢复 READY，防卡死 */
+        return;
+      }
+    }
   }
   if (HAL_SPI_Transmit_DMA(&hspi4, buf, frame_bytes) != HAL_OK)
   {
-    Error_Handler();
+    return;   /* 启动失败：放弃本次发送，避免 Error_Handler 死循环 */
   }
   /* 等待整帧(含复位码元)发完再返回 */
-  while (HAL_SPI_GetState(&hspi4) != HAL_SPI_STATE_READY)
   {
+    uint32_t tmo = HAL_GetTick();
+    while (HAL_SPI_GetState(&hspi4) != HAL_SPI_STATE_READY)
+    {
+      if ((HAL_GetTick() - tmo) > WS_TX_TIMEOUT_MS)
+      {
+        HAL_SPI_Abort(&hspi4);   /* 超时：中止残留传输，恢复 READY，防卡死 */
+        return;
+      }
+    }
   }
 }
 
@@ -347,8 +365,16 @@ static void ws_port_pwm_send(const uint8_t *brg, uint16_t count)
   uint8_t  c;
   int8_t   bit;
 
-  while (ws_pwm_busy)   /* 保险：等上一帧结束（正常流程函数本身已阻塞到发完） */
   {
+    uint32_t tmo = HAL_GetTick();
+    while (ws_pwm_busy)   /* 保险：等上一帧结束（正常流程函数本身已阻塞到发完） */
+    {
+      if ((HAL_GetTick() - tmo) > WS_TX_TIMEOUT_MS)
+      {
+        ws_pwm_busy = 0;   /* 超时：强制清忙标志，防卡死 */
+        return;
+      }
+    }
   }
   ws_pwm_busy = 1;
 
@@ -371,11 +397,20 @@ static void ws_port_pwm_send(const uint8_t *brg, uint16_t count)
 
   if (HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_1, (uint32_t *)ws_pwm_buf, total) != HAL_OK)
   {
-    Error_Handler();
+    ws_pwm_busy = 0;   /* 启动失败：清标志并放弃本次发送，避免 Error_Handler 死循环 */
+    return;
   }
 
-  while (ws_pwm_busy)   /* 阻塞至整帧(含复位)发完再返回 */
   {
+    uint32_t tmo = HAL_GetTick();
+    while (ws_pwm_busy)   /* 阻塞至整帧(含复位)发完再返回 */
+    {
+      if ((HAL_GetTick() - tmo) > WS_TX_TIMEOUT_MS)
+      {
+        ws_pwm_busy = 0;   /* 超时：强制清忙标志，防卡死 */
+        return;
+      }
+    }
   }
 }
 
