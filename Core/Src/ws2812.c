@@ -27,12 +27,12 @@
 
 /* USER CODE BEGIN Private variables */
 static uint16_t s_prev_count;   /* 上次渲染的灯珠数：灯数调小时清尾部 + 决定本帧下发长度 */
-/* 上电默认配置：160 灯 / 红色 / 100% 亮度 / 常亮（与 Modbus 寄存器默认值一致） */
+/* 上电默认配置：160 灯 / 绿色 / 100% 亮度 / 常亮（与 Modbus 寄存器默认值一致） */
   ws_cfg_t s_cfg = {
     .count      = 160u,
-    .mode       = WS_MODE_BLINK,
+    .mode       = WS_MODE_SOLID,
     .brightness = 100u,
-    .color      = WS2812_COLOR_RED,
+    .color      = WS2812_COLOR_GREEN,
     .speed      = WS_SPEED_FLOW_DEF,
 };
 

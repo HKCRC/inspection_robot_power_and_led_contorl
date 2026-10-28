@@ -21,17 +21,18 @@ extern "C" {
 
 /* USER CODE BEGIN Exported defines */
 /* ---- 输出后端选择（更换 IO 只改这里）--------------------------------------
- * WS_PORT_SPI  : SPI4  MOSI = PE14（DMA 发送，时序最稳，默认）
- * WS_PORT_GPIO : GPIO  软件 800Kbps = PA5（ws2812_Pin，NOP 延时需示波器微调）
- * WS_PORT_PWM  : TIM3_CH1 PWM+DMA = PB4
- * 注意：多后端硬件同时接线时只能启用一个，避免并发驱动损坏帧数据
+ * WS_PORT_SPI      : SPI4  MOSI = PE14（DMA 发送）
+ * WS_PORT_GPIO     : GPIO  软件 800Kbps = PA5（NOP 延时需示波器微调）
+ * WS_PORT_PWM      : TIM3_CH1 PWM+DMA = PB4
+ * WS_PORT_PWM_SPI  : 双后端同步输出——上层 PB4(PWM) + 下层 PE14(SPI4)，同一帧同时发两路
  * ------------------------------------------------------------------------ */
-#define WS_PORT_SPI   0u
-#define WS_PORT_GPIO  1u
-#define WS_PORT_PWM   2u
+#define WS_PORT_SPI      0u
+#define WS_PORT_GPIO     1u
+#define WS_PORT_PWM      2u
+#define WS_PORT_PWM_SPI  3u
 
 #ifndef WS_PORT_USE
-#define WS_PORT_USE   WS_PORT_PWM
+#define WS_PORT_USE   WS_PORT_PWM_SPI
 #endif
 
 /* 灯带物理灯珠总数（决定发送缓冲大小与每次下发的帧长）；

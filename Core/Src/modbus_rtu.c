@@ -69,7 +69,7 @@ extern UART_HandleTypeDef huart4;
  * 0x0006=灯数(0~160)     0x0007=亮度%(0~100)  0x0008/9/A=R/G/B(0~255)
  * 0x000B=灯效模式        0=常灭 1=常亮 2=闪烁1Hz 3=流水灯 4=呼吸灯
  * 0x000C=速度参数        流水=步进间隔ms(10~1000) 呼吸=全周期ms(500~10000)
- * 上电默认 160 灯/红色/亮度100%/常亮（与 ws2812.c 引擎默认值一致）
+ * 上电默认 160 灯/绿色/亮度100%/常亮（与 ws2812.c 引擎默认值一致）
  * 写入成功后经 ws2812_set_cfg() 推送给灯效引擎即时生效
  * ------------------------------------------------------------------------ */
 #define MB_REG_COUNT      13u   /* 0x0000~0x0005 输入  0x0006~0x000C WS2812 配置 */
@@ -87,8 +87,8 @@ extern UART_HandleTypeDef huart4;
  uint8_t  s_rx_buf[MB_RX_BUF_SIZE];
  uint8_t  s_tx_buf[MB_TX_BUF_SIZE];
  /* WS2812 寄存器镜像：[0]=灯数 [1]=亮度 [2]=R [3]=G [4]=B [5]=模式 [6]=速度
-  * 默认 160 灯/100%/红/常亮/流水默认速度 */
- volatile uint16_t s_ws_regs[MB_WS_REG_COUNT] = {160u, 100u, 0xFFu, 0x00u, 0x00u, WS_MODE_BLINK, WS_SPEED_FLOW_DEF};
+  * 默认 160 灯/100%/绿/常亮/流水默认速度 */
+ volatile uint16_t s_ws_regs[MB_WS_REG_COUNT] = {160u, 100u, 0x00u, 0xFFu, 0x00u, WS_MODE_SOLID, WS_SPEED_FLOW_DEF};
 /* ---- 接收缓冲与诊断变量 --------------------------------------------------
  * s_rx_dma_buf：DMA 直接写入；s_rx_buf：中断里拷出的整帧，主循环解析用。
  * 两者分离，主循环解析时 DMA 已经在收下一帧，互不干扰。
